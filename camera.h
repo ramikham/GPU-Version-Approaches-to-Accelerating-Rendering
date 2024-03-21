@@ -36,9 +36,7 @@ public:
         vertical = 2.0f*half_height*focus_dist*v;
     }
     __device__ Ray get_ray(float s, float t, curandState *local_rand_state) {
-        Vec3D rd = lens_radius*random_in_unit_disk(local_rand_state);
-        Vec3D offset = u * rd.x() + v * rd.y();
-        return Ray(origin + offset, lower_left_corner + s * horizontal + t * vertical - origin - offset);
+        return Ray(origin, lower_left_corner + s * horizontal + t * vertical - origin);
     }
 
     Vec3D origin;

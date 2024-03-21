@@ -37,6 +37,9 @@ public:
         delete mat_ptr;
     }
     __device__ virtual bool bounding_box(float time_0, float time_1, AABB& surrounding_AABB) const = 0;
+    __device__ virtual float PDF_value(const Vec3D& o, const Vec3D& v) const { return 0.0; }
+    __device__ virtual Vec3D random(const Vec3D& o, curandState *local_rand_state) const { return Vec3D(1,0,0); }
+
 public:
     Material* mat_ptr = nullptr;
 };

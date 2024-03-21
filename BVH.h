@@ -8,36 +8,8 @@
 #include "Primitive.h"
 #include "Primitives_List.h"
 #include "AABB.h"
-#include "Empty.h"
 #include <thrust/sort.h>
 
-enum Axis { X, Y, Z };
-
-__device__ void swap(Primitive*& p1, Primitive*& p2) {
-    Primitive* temp = p1;
-    *p1 = *p2;
-    p2 = temp;
-}
-
-template<Axis axis>
-__device__ void bubble_sort(Primitive** e, int n) {
-    for (int i = 0; i < n - 1; i++) {
-        for (int j = 0; j < n - i - 1; j++) {
-            AABB box_left, box_right;
-            Primitive *ah = e[j];
-            Primitive *bh = e[j+1];
-
-            ah->bounding_box(0, 0, box_left);
-            bh->bounding_box(0, 0, box_right);
-
-            if ((axis == X && (box_left.min().x() - box_right.min().x()) < 0.0)
-                || (axis == Y && (box_left.min().y() - box_right.min().y()) < 0.0)
-                || (axis == Z && (box_left.min().z() - box_right.min().z()) < 0.0)) {
-                swap(e[j], e[j+1]);
-            }
-        }
-    }
-}
 __device__ inline bool compare_AABBs(const Primitive* a, const Primitive* b, int axis) {
     // Compares two primitives based on the minimum coordinates of their bounding boxes along a specified axis.
 
@@ -49,7 +21,7 @@ __device__ inline bool compare_AABBs(const Primitive* a, const Primitive* b, int
     }
 
     // Compare by the minimum coordinate of the bounding boxes
-    return box_a.min().V[axis] < box_b.min().V[axis];
+    return box_a.get_max().V[axis] < box_b.get_max().V[axis];
 }
 
 __device__ bool box_x_compare(const Primitive* a, const Primitive* b){
@@ -74,59 +46,14 @@ __device__ inline float random_unit(curandState_t* rand_state)
     return curand_uniform(rand_state);
 }
 
-__device__ inline float uniform_rand(curandState_t* rand_state, const float min, const float max)
-{
-    return min + (max - min) * random_unit(rand_state);
-}
-
-struct BoxCompare {
-    __device__ BoxCompare(int m): mode(m) {}
-    __device__ bool operator()(Primitive* a, Primitive* b) const {
-        // return true;
-
-        AABB box_left, box_right;
-        Primitive* ah = a;
-        Primitive* bh = b;
-
-        if(!ah->bounding_box(0, 0, box_left) || !bh->bounding_box(0, 0, box_right)) {
-            return false;
-        }
-
-        float val1, val2;
-        if(mode == 1) {
-            val1 = box_left.min().x();
-            val2 = box_right.min().x();
-        }else if(mode == 2) {
-            val1 = box_left.min().y();
-            val2 = box_right.min().y();
-        }else if(mode == 3) {
-            val1 = box_left.min().z();
-            val2 = box_right.min().z();
-        }
-
-        if(val1 - val2 < 0.0){
-            return false;
-        } else{
-            return true;
-        }
-    }
-    // mode: 1, x; 2, y; 3, z
-    int mode;
-};
-
 class BVH : public Primitive {
 public:
-    __device__ BVH(Primitive **l, int n, float time0, float time1, curandState* local_rand_state) {
-       // printf("Inside BVH, n = %d", n);
-        int axis = int(3 * curand_uniform(local_rand_state));
-        if (axis == 0){
-           // qsort(l, l+n, sizeof(Primitive*), BoxCompare(1));
-            thrust::sort(l, l + n, BoxCompare(1));
-        }else if (axis == 1){
-            thrust::sort(l, l + n, BoxCompare(2));
-        }else{
-            thrust::sort(l, l + n, BoxCompare(3));
-        }
+    __device__ BVH(Primitive **l, int n, float time0, float time1, curandState* local_rand_state, int axis_ctr=0) {
+        // printf("Inside BVH, n = %d", n);
+        int axis = axis_ctr % 3;
+        auto comparator = (axis == 0) ? box_x_compare
+                                      : (axis == 1) ? box_y_compare
+                                             : box_z_compare;
 
         if (n == 1) {
             left = right = l[0];
@@ -134,8 +61,24 @@ public:
             left  = l[0];
             right = l[1];
         }else {
-            left  = new BVH(      l,     n/2, time0, time1, local_rand_state);
-            right = new BVH(l + n/2, n - n/2, time0, time1, local_rand_state);
+            thrust::sort(l, l + n, comparator);
+            auto m = n / 2;
+
+            // Allocate memory for each half
+            Primitive **first_half = new Primitive*[m];
+            Primitive **second_half = new Primitive*[n - m];
+
+            // Copy the first half
+            for (int i = 0; i < m; ++i)
+                first_half[i] = l[i];
+
+            // Copy the second half
+            for (int i = 0; i < n - m; ++i)
+                second_half[i] = l[m + i];
+
+           // Launch recursion
+            left  = new BVH(first_half, m, time0, time1, local_rand_state, axis_ctr + 1);
+            right = new BVH(second_half, n - m, time0, time1, local_rand_state, axis_ctr + 1);
         }
 
         AABB box_left, box_right;
@@ -149,7 +92,7 @@ public:
 
     __device__ bool intersection(const Ray &r, float t_min, float t_max, Intersection_Information &rec) const override {
         if (!box.intersection(r, t_min, t_max)) {
-            return false;
+            return false;  // EARLY EXIT !!!!
         }
 
         bool hit_right = right->intersection(r, t_min, t_max, rec);
@@ -163,6 +106,14 @@ public:
         return true;
     }
 
+    __device__ ~BVH() override {
+        if (left != right) {
+            delete left;
+            delete right;
+        }
+        else
+            delete left;
+    }
 private:
     Primitive *left;
     Primitive *right;

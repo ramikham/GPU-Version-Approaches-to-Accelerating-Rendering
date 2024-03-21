@@ -15,34 +15,8 @@ class Box : public Primitive {
 public:
     __device__ Box(const Vec3D &min_point, const Vec3D &max_point, Material* mat_ptr) :
             this_min_point(min_point), this_max_point(max_point), this_material(mat_ptr) {
+
         const auto lst = new Primitive * [6];
-
-        /*
-        lst[0] = new XY_Rectangle(Vec3D(min_point.x(), min_point.y(), min_point.z()),
-                                  Vec3D(max_point.x(), max_point.y(), min_point.z()),
-                                  mat_ptr);
-
-        lst[1] = new XY_Rectangle(Vec3D(min_point.y(), min_point.z(), max_point.x()),
-                                  Vec3D(max_point.y(), max_point.z(), max_point.x()),
-                                  mat_ptr);
-
-        lst[2] = new YZ_Rectangle(Vec3D(min_point.y(), min_point.z(), min_point.x()),
-                                  Vec3D(max_point.y(), max_point.z(), min_point.x()),
-                                  mat_ptr);
-
-       lst[3] = new YZ_Rectangle(Vec3D(min_point.y(), min_point.z(), max_point.x()),
-                                  Vec3D(max_point.y(), max_point.z(), max_point.x()),
-                                  mat_ptr);
-
-        lst[4] = new XZ_Rectangle(Vec3D(min_point.x(), min_point.z(), min_point.y()),
-                                  Vec3D(max_point.x(), max_point.z(), min_point.y()),
-                                  mat_ptr);
-
-        lst[5] = new XZ_Rectangle(Vec3D(min_point.x(), min_point.z(), max_point.y()),
-                                  Vec3D(max_point.x(), max_point.z(), max_point.y()),
-                                  mat_ptr);
-        */
-
 
         lst[0] = new XY_Rectangle(min_point,
                                   Vec3D(max_point.x(), max_point.y(), min_point.z()),
@@ -65,7 +39,6 @@ public:
                                   mat_ptr);
 
         box_sides = new Primitives_List(lst, 6);
-
     }
 
     __device__ ~Box() override {

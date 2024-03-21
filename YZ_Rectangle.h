@@ -8,6 +8,7 @@
 #include "Primitive.h"
 
 /// Reference: Ray Tracing: The Next Week
+/// Note: Some changes were made. I changed the way the rectangles are represented and the importance sampling process.
 class YZ_Rectangle : public Primitive {
 public:
     // Constructor
@@ -20,6 +21,8 @@ public:
         x_comp = minPoint.x();
     }
 
+    // Overloaded Functions
+    // -----------------------------------------------------------------------
     __device__ bool intersection(const Ray &r, float t_min, float t_max, Intersection_Information &rec) const override {
         // Does the ray intersect the YZ_Rectangle?
 
@@ -44,11 +47,39 @@ public:
     }
 
     __device__ bool bounding_box(float time_0, float time_1, AABB &surrounding_AABB) const override {
+        // Does the YZ_Rectangle have a bounding box?
+
         surrounding_AABB = AABB{ {min_point.x() - 0.0001f, min_point.y(), min_point.z()},
                                  {max_point.x() + 0.0001f, max_point.y(), max_point.z()} };
         return true;
     }
 
+    __device__ float PDF_value(const Vec3D &o, const Vec3D &v) const override {
+        // Calculate the PDF value, the likelihood of sampling a random direction on the YZ_Rectangle
+
+        Intersection_Information intersection_info;
+        if (!this->intersection(Ray(o, v), 0.001, INFINITY, intersection_info))
+            return 0;
+
+        auto area = (max_point.y() - min_point.y()) * (max_point.z() - min_point.z());
+        auto distance_squared = intersection_info.t * intersection_info.t * v.length_squared();
+        auto cosine = fabs(dot_product(v, intersection_info.normal) / v.length());
+
+        return distance_squared / (cosine * area);
+    }
+
+    __device__ Vec3D random(const Vec3D &o, curandState *local_rand_state) const override {
+        // Generates a random direction within the YZ_Rectangle based on importance sampling
+
+        // Get the random y and z components
+        float rand_y_comp = min_point.y() + curand_uniform(local_rand_state) * (max_point.y() - min_point.y());
+        float rand_z_comp = min_point.z() + curand_uniform(local_rand_state) * (max_point.z() - min_point.z());
+
+        // Use them!
+        Vec3D random_point = Vec3D(x_comp, rand_y_comp, rand_z_comp);
+
+        return random_point - o;
+    }
 public:
     // Data Members
     // -----------------------------------------------------------------------
